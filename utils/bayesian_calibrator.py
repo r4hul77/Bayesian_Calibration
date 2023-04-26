@@ -24,6 +24,7 @@ class BaseCalibrator:
         logging.debug(f"Initial Gravity Vector {self.grav_vec.mean(dim=0)} with shape {self.grav_vec.shape}")
         self.imu_dt = imu_dt
         self.gps_dt = gps_dt
+        self.gps_pos = torch.zeros(3, dtype=torch.float32)
         self.imu_cnt = 0
         self.gps_cnt = 0
         self.pivot = 0 
@@ -48,6 +49,7 @@ class BaseCalibrator:
     def update_gps(self, gps_data):
         self.gps_recived = True
         self.rms_errors[:, self.pivot] = torch.norm(self.imu_positions - gps_data, dim=1)
+        self.gps_pos = gps_data
         self.gps_cnt += 1
         self.pivot += 1
         self.pivot%=self.horizon_size
@@ -64,7 +66,6 @@ class BaseCalibrator:
             self.update_gps(gps_data)
         if(self.gps_recived and self.imu_recived):
             if(self.horizon_size_reached()):
-                print("Horizon size reached")
                 postier, out_crieterion = self.calculate_postier()
         return postier, out_crieterion
 
@@ -81,11 +82,13 @@ class BaseCalibrator:
         positions = self.imu_positions[resampled]
         rms = self.rms_errors[resampled]
         self.quaternions = quats
-        self.imu_positions = positions
-        self.rms_errors = rms
+        self.imu_positions = torch.rand_like(self.imu_positions) * self.pos_noise + self.gps_pos
+        logging.debug(f"Positions Shape {self.imu_positions.shape}")
+        self.rms_errors = torch.zeros_like(self.rms_errors)
         logging.debug(f"ReSampled Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
         logging.debug(f"ReSampled Means of positions {self.imu_positions.mean(dim=0)} with shape {self.imu_positions.shape}")
-        logging.debug(f"ReSampled Means of rms errors {self.rms_errors.mean(dim=0)} with shape {self.rms_errors.shape}")        
+        logging.debug(f"ReSampled Means of rms errors {self.rms_errors.mean(dim=0)} with shape {self.rms_errors.shape}")
+        print(f"Mean of Quats {quats.mean(dim=0)}")       
         return quats, (positions, rms)
             
             
