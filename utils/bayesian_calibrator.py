@@ -69,35 +69,23 @@ class BaseCalibrator:
         return postier, out_crieterion
 
     def calculate_postier(self):
-        n_n = torch.randint(self.sample_size, (1, ))
-        logging.debug(f"Calculating Postier with {self.sample_size} samples")
-        logging.debug(f"Picked Sample {n_n} with Quaternion {self.quaternions[n_n]}, Position {self.imu_positions[n_n]} RMS Error {self.rms_errors[n_n].sum()}")
-        positions = torch.empty(self.sample_size*2, 3, dtype=torch.float32)
-        quats = torch.empty(self.sample_size*2, 4, dtype=torch.float32)
-        rms = torch.empty(self.sample_size*2, self.horizon_size, dtype=torch.float32)
-        for i in range(self.sample_size*2):
-            logging.debug(f"\t Sample {i}")
-            n_i = torch.randint(self.sample_size, (1, ))
-            logging.debug(f"\tOriginal Sample {n_n} with Quaternion {self.quaternions[n_n]}, Position {self.imu_positions[n_n]} RMS Error {self.rms_errors[n_n].sum()}")
-            logging.debug(f"\tPicked Sample {n_i} with Quaternion {self.quaternions[n_i]}, Position {self.imu_positions[n_i]} RMS Error {self.rms_errors[n_i].sum()}")
-            mh_ratio = torch.exp(-self.rms_errors[n_i].sum() + self.rms_errors[n_n].sum())
-            logging.debug(f"\tMH Ratio Calculated {mh_ratio}")
-            if(mh_ratio>torch.rand(1)):
-                logging.debug(f"\tAccepted")
-                n_n = n_i
-            else:
-                logging.debug(f"\tRejected")            
-            positions[i] = self.imu_positions[n_n, :]
-            rms[i] = self.rms_errors[n_n, :]
-            quats[i] = self.quaternions[n_n, :]
-        logging.debug(f"Mean of Samples \n \t\t imu_positions : {positions.mean(dim=0)}\n \t\t quaternions : {quats.mean(dim=0)}\n \t\t rms_errors : {rms.mean(dim=0)}")
-        logging.debug(f"Postier Calculated with {self.sample_size} samples")
-        logging.debug(f"Means\n \t\t imu_positions : {self.imu_positions.mean(dim=0)}\n \t\t quaternions : {self.quaternions.mean(dim=0)}\n \t\t rms_errors : {self.rms_errors.mean(dim=0)}")
-        self.imu_positions = torch.clone(positions[self.sample_size:, :])
-        self.quaternions = torch.clone(quats[self.sample_size:, :])
-        self.rms_errors = torch.clone(rms[self.sample_size:, :])
-        logging.debug(f"New Means\n \t\t imu_positions : {self.imu_positions.mean(dim=0)}\n \t\t quaternions : {self.quaternions.mean(dim=0)}\n \t\t rms_errors : {self.rms_errors.mean(dim=0)}")
-
+        logging.debug(f"Calculating Postier")
+        logging.debug(f"Shgape of RMS Errors {self.rms_errors.shape}")
+        probs = torch.softmax(-self.rms_errors, dim=0)
+        logging.debug(f"Probs shape {probs.shape}")
+        resampled = torch.multinomial(torch.squeeze(probs), self.sample_size, replacement=True)
+        logging.debug(f"Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
+        logging.debug(f"Means of positions {self.imu_positions.mean(dim=0)} with shape {self.imu_positions.shape}")
+        logging.debug(f"Means of rms errors {self.rms_errors.mean(dim=0)} with shape {self.rms_errors.shape}")
+        quats = self.quaternions[resampled]
+        positions = self.imu_positions[resampled]
+        rms = self.rms_errors[resampled]
+        self.quaternions = quats
+        self.imu_positions = positions
+        self.rms_errors = rms
+        logging.debug(f"ReSampled Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
+        logging.debug(f"ReSampled Means of positions {self.imu_positions.mean(dim=0)} with shape {self.imu_positions.shape}")
+        logging.debug(f"ReSampled Means of rms errors {self.rms_errors.mean(dim=0)} with shape {self.rms_errors.shape}")        
         return quats, (positions, rms)
             
             
