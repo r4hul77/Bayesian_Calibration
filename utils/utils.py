@@ -1,9 +1,17 @@
 import torch
 import roma
+import logging
 
 def add_gauss_noise(data, sigma):
     noise = torch.randn_like(data) * sigma
     return data + noise
+
+def delta_q(real_q, q1):
+    logging.debug(f"Real Q {real_q} with shape {real_q.shape} and q1 with shape {q1.shape}")
+    b, _ = q1.shape
+    deltas = 2*torch.arccos(torch.clamp(torch.abs(torch.bmm(torch.unsqueeze(real_q, dim=0).repeat((b,1)).view(b, 1, 4), q1.view(b, 4, 1))), -1, 1))
+    logging.debug(f"Delta Q is {deltas}")
+    return deltas
 
 
 def generate_gps_data(pos, sigma, drop):

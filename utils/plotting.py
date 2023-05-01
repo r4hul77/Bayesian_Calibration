@@ -193,4 +193,50 @@ def plot_coordinate_axes(quaternion):
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    plt.show()
+
+def plot_axes(q_real, q_calc):
+    
+    def get_quat_axes(quaternion):    
+        R = roma.unitquat_to_rotmat(quaternion.to("cpu"))
+        
+        # Define axes
+        axes = np.array([[1, 0, 0],
+                        [0, 1, 0],
+                        [0, 0, 1]])
+        
+        # Rotate axes by rotation matrix
+        rotated_axes = R @ axes.T
+        
+        x_axis = rotated_axes[:, 0]
+        y_axis = rotated_axes[:, 1]
+        z_axis = rotated_axes[:, 2]
+        return x_axis, y_axis, z_axis    
+    # Plot axes
+    x_axis, y_axis, z_axis = get_quat_axes(q_real)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'r', label='X-R')
+    ax.text(x_axis[0], x_axis[1], x_axis[2], 'X-R')
+    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'g', label='Y-R')
+    ax.text(y_axis[0], y_axis[1], y_axis[2], 'Y-R')
+    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'b', label='Z-R')
+    ax.text(z_axis[0], z_axis[1], z_axis[2], 'Z-R')
+    ax.set_xlim([-1, 1])
+    ax.set_ylim([-1, 1])
+    ax.set_zlim([-1, 1])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    x_axis, y_axis, z_axis = get_quat_axes(q_calc)
+    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'r', label='X-C')
+    ax.text(x_axis[0], x_axis[1], x_axis[2], 'X-C')
+    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'g', label='Y-C')
+    ax.text(y_axis[0], y_axis[1], y_axis[2], 'Y-C')
+    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'b', label='Z-C')
+    ax.text(z_axis[0], z_axis[1], z_axis[2], 'Z-C')
+    ax.set_xlim([-1, 1])
+    ax.set_ylim([-1, 1])
+    ax.set_zlim([-1, 1])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
