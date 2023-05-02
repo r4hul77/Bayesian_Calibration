@@ -157,13 +157,21 @@ class BaseCalibrator:
         accel = (roma.quat_action(inv_quats, imu_data_tx, is_normalized=True) + self.grav_vec)
         logging.debug(f"Accel {accel.mean(dim=0)} with shape {accel.shape}")
         #self.imu_positions += 0.5*accel * self.imu_dt**2
-        # THIS IS WHERE THE BUG IS AT FIX IT
-        self.states.modify((torch.matmul(self.A, self.states.get().transpose(1, 0)) + torch.matmul(self.B, accel.transpose(1,0))).transpose(1, 0))
+        self.states.modify(self.update_state(accel, self.states.get()))
         self.summarize_states()
         self.summarize_accels(accel, real_accel)
         
         self.imu_cnt += 1
         return self.states
+
+    def update_state(self, accel, state):
+        # This is the BUGGGGGG
+        logging.debug(f"Updating State with accel {accel.shape} and state {state.shape}")
+        logging.debug(f"A {self.A.shape} B {self.B.shape}")
+        logging.debug(f"State {state} Accel {accel}")
+        state =  (torch.bmm(self.A.repeat(self.sample_size, 1, 1), state.unsqueeze(2)) + torch.bmm(self.B.repeat(self.sample_size, 1, 1), accel.unsqueeze(2))).squeeze(2)
+        logging.debug(f"Updated State {state}")
+        return state
 
     def summarize_accels(self, accel, real_accel):
         axis = ["X", "Y", "Z"]
@@ -220,7 +228,9 @@ class BaseCalibrator:
         #logging.debug(f"Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
         #logging.debug(f"Means of positions {self.states.tensor.mean(dim=0)} with shape {self.states.tensor.shape}")
         #logging.debug(f"Means of rms errors {self.rms_errors.mean(dim=0)} with shape {self.rms_errors.shape}")
+        logging.debug(f"Quaternions {self.quaternions} with shape {self.quaternions.shape}")
         quats = self.quaternions[resampled]
+        logging.debug(f"Resampled Quats {quats} with shape {quats.shape}")
         positions = self.states.tensor[:, resampled, :]
         self.states.tensor = positions
         rms = self.rms_errors[resampled]
