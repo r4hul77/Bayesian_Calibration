@@ -7,7 +7,7 @@ from collections import deque
 from torch.utils.tensorboard import SummaryWriter
 
 # Wire up the logger with a file name a format such that it shows up the function name where it was called for better debuging experience
-logging.basicConfig(filename='debug.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s', filemode='w')
+logging.basicConfig(filename='/home/r4hul/Projects/Bayesian_Calibration/debug.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s', filemode='w')
 logger = logging.getLogger(__name__)
 
 torch.set_grad_enabled(False)
@@ -18,17 +18,20 @@ class TorchQueue:
         self.max_size = max_size
         self.tensor_size = tensor_size
         self.dtype = dtype
-        self.pivot = 0
+        self.pivot = -1
         self.tensor = torch.zeros((self.max_size, *self.tensor_size), dtype=self.dtype)
     
     def push(self, tensor):
-        self.tensor[self.pivot] = tensor
         self.pivot = (self.pivot+1)%self.max_size
+        logging.debug(f"Pushing tensor of shape {tensor} to the queue at positon {self.pivot}")
+        self.tensor[self.pivot] = tensor
     
     def modify(self, tensor):
+        logging.debug(f"Modifying tensor of shape {tensor} at position {self.pivot}")
         self.tensor[self.pivot] = tensor
 
     def get(self):
+        logging.debug(f"Getting tensor of shape {self.tensor} at position {self.pivot}")
         return self.tensor[self.pivot]
 
 
@@ -45,6 +48,7 @@ class BaseCalibrator:
         self.gps_queue = TorchQueue(self.horizon_size, (self.sample_size,3), dtype=torch.float32)
         self.states = TorchQueue(self.horizon_size, (self.sample_size,6), dtype=torch.float32)
         self.gps_recived = False
+        #self.gps_queue.push(torch.randn(self.sample_size, 3, dtype=torch.float32) * self.pos_noise + init_pos)
         self.imu_recived = False
         #Use States ?
         logging.debug(f"Sizes of Tensors:\n self.states = {torch.randn(self.sample_size, 6, dtype=torch.float32).shape}"
@@ -61,13 +65,13 @@ class BaseCalibrator:
         self.gps_dt = gps_dt
         temp_tensor = torch.hstack([torch.zeros(3, 3, dtype=torch.float32), torch.eye(3, dtype=torch.float32)])
         logging.debug(f"Temp Tensor Shape {temp_tensor.shape}")
-        self.A = torch.eye(6, dtype=torch.float32)  + torch.vstack([temp_tensor * self.imu_dt, torch.zeros(3, 6)])
+        self.A = (torch.eye(6, dtype=torch.float32)  + torch.vstack([temp_tensor * self.imu_dt, torch.zeros(3, 6)])).repeat(self.sample_size, 1, 1)
         self.B = torch.tensor([[0.5*self.imu_dt*self.imu_dt, 0, 0],
                                [0, 0.5*self.imu_dt*self.imu_dt, 0],
                                [0, 0, 0.5*self.imu_dt*self.imu_dt],
                                [self.imu_dt, 0, 0],
                                [0, self.imu_dt, 0],
-                               [0, 0, self.imu_dt]])
+                               [0, 0, self.imu_dt]]).repeat(self.sample_size, 1, 1)
         logging.debug(f"Initial Gravity Vector {self.grav_vec.mean(dim=0)} with shape {self.grav_vec.shape}")
         self.gps_pos = torch.zeros(3, dtype=torch.float32)
         self.imu_cnt = 0
@@ -99,34 +103,35 @@ class BaseCalibrator:
     
     def summarize_states(self, real_state=None):
         axis = ["X", "Y", "Z"]
+        state = self.states.get()
         for i in range(3):
-            self.writer.add_histogram(f"States/Positions/{axis[i]}", self.states.tensor[self.states.pivot, :, i], self.states_summary_cnt)
-            self.writer.add_histogram(f"States/Velocities/{axis[i]}", self.states.tensor[self.states.pivot, :, i], self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Positions/Mean/{axis[i]}", self.states.tensor[self.states.pivot, :, i].mean(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Velocities/Mean/{axis[i]}", self.states.tensor[self.states.pivot, :, i].mean(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Positions/Std/{axis[i]}", self.states.tensor[self.states.pivot, :, i].std(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Velocities/Std/{axis[i]}", self.states.tensor[self.states.pivot, :, i].std(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Positions/Max/{axis[i]}", self.states.tensor[self.states.pivot, :, i].max(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Velocities/Max/{axis[i]}", self.states.tensor[self.states.pivot, :, i].max(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Positions/Min/{axis[i]}", self.states.tensor[self.states.pivot, :, i].min(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Velocities/Min/{axis[i]}", self.states.tensor[self.states.pivot, :, i].min(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Positions/Median/{axis[i]}", self.states.tensor[self.states.pivot, :, i].median(), self.states_summary_cnt)
-            self.writer.add_scalar(f"States/Velocities/Median/{axis[i]}", self.states.tensor[self.states.pivot, :, i].median(), self.states_summary_cnt)
+            self.writer.add_histogram(f"States/Positions/{axis[i]}", state[ :, i], self.states_summary_cnt)
+            self.writer.add_histogram(f"States/Velocities/{axis[i]}", state[ :, i], self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Positions/Mean/{axis[i]}", state[ :, i].mean(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Velocities/Mean/{axis[i]}", state[ :, i].mean(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Positions/Std/{axis[i]}", state[ :, i].std(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Velocities/Std/{axis[i]}", state[ :, i].std(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Positions/Max/{axis[i]}", state[ :, i].max(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Velocities/Max/{axis[i]}", state[ :, i].max(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Positions/Min/{axis[i]}", state[ :, i].min(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Velocities/Min/{axis[i]}", state[ :, i].min(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Positions/Median/{axis[i]}", state[ :, i].median(), self.states_summary_cnt)
+            self.writer.add_scalar(f"States/Velocities/Median/{axis[i]}", state[ :, i].median(), self.states_summary_cnt)
         self.states_summary_cnt += 1
         if real_state is not None:
             for i in range(3):
-                self.writer.add_histogram(f"States/Positions/Error/{axis[i]}", self.states.tensor[self.states.pivot, :, i] - real_state[ i], self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Positions/Error/Mean/{axis[i]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).mean(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Positions/Error/Std/{axis[i]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).std(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Positions/Error/Max/{axis[i]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).max(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Positions/Error/Min/{axis[i]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).min(), self.states_summary_cnt)
+                self.writer.add_histogram(f"States/Positions/Error/{axis[i]}", state[ :, i] - real_state[ i], self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Positions/Error/Mean/{axis[i]}", (state[ :, i] - real_state[i]).mean(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Positions/Error/Std/{axis[i]}", (state[ :, i] - real_state[i]).std(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Positions/Error/Max/{axis[i]}", (state[ :, i] - real_state[i]).max(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Positions/Error/Min/{axis[i]}", (state[ :, i] - real_state[i]).min(), self.states_summary_cnt)
                 self.writer.add_scalar(f"States/Positions/Real/{axis[i]}", real_state[i], self.states_summary_cnt)
             for i in range(3, 6):
-                self.writer.add_histogram(f"States/Velocities/Error/{axis[i-3]}", self.states.tensor[self.states.pivot, :, i] - real_state[ i], self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Velocities/Error/Mean/{axis[i-3]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).mean(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Velocities/Error/Std/{axis[i-3]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).std(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Velocities/Error/Max/{axis[i-3]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).max(), self.states_summary_cnt)
-                self.writer.add_scalar(f"States/Velocities/Error/Min/{axis[i-3]}", (self.states.tensor[self.states.pivot, :, i] - real_state[i]).min(), self.states_summary_cnt)
+                self.writer.add_histogram(f"States/Velocities/Error/{axis[i-3]}", state[ :, i] - real_state[ i], self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Velocities/Error/Mean/{axis[i-3]}", (state[ :, i] - real_state[i]).mean(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Velocities/Error/Std/{axis[i-3]}", (state[ :, i] - real_state[i]).std(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Velocities/Error/Max/{axis[i-3]}", (state[ :, i] - real_state[i]).max(), self.states_summary_cnt)
+                self.writer.add_scalar(f"States/Velocities/Error/Min/{axis[i-3]}", (state[ :, i] - real_state[i]).min(), self.states_summary_cnt)
                 self.writer.add_scalar(f"States/Velocities/Real/{axis[i-3]}", real_state[i], self.states_summary_cnt)
             self.state_error_summary += 1
     
@@ -157,19 +162,17 @@ class BaseCalibrator:
         accel = (roma.quat_action(inv_quats, imu_data_tx, is_normalized=True) + self.grav_vec)
         logging.debug(f"Accel {accel.mean(dim=0)} with shape {accel.shape}")
         #self.imu_positions += 0.5*accel * self.imu_dt**2
-        self.states.modify(self.update_state(accel, self.states.get()))
-        self.summarize_states()
+        state = self.update_state(accel, self.states.get())
         self.summarize_accels(accel, real_accel)
         
         self.imu_cnt += 1
-        return self.states
+        return state
 
     def update_state(self, accel, state):
-        # This is the BUGGGGGG
         logging.debug(f"Updating State with accel {accel.shape} and state {state.shape}")
         logging.debug(f"A {self.A.shape} B {self.B.shape}")
         logging.debug(f"State {state} Accel {accel}")
-        state =  (torch.bmm(self.A.repeat(self.sample_size, 1, 1), state.unsqueeze(2)) + torch.bmm(self.B.repeat(self.sample_size, 1, 1), accel.unsqueeze(2))).squeeze(2)
+        state =  (torch.bmm(self.A, state.unsqueeze(2)) + torch.bmm(self.B, accel.unsqueeze(2))).squeeze(2)
         logging.debug(f"Updated State {state}")
         return state
 
@@ -200,20 +203,31 @@ class BaseCalibrator:
         postier = self.quaternions
         out_crieterion = (self.states, self.rms_errors)
         if(imu_data is not None):
-            self.update_imu(imu_data, real_accel)
+            state = self.update_imu(imu_data, real_accel)
+            self.states.modify(state)
         if(gps_data is not None):
+            logging.debug(f"Updating GPS Queue with data {self.gps_queue.tensor} and gps data {gps_data} with shape {gps_data.shape}")
             self.update_gps(gps_data)
-        if(self.gps_recived and self.imu_recived):
-            if(self.horizon_size_reached()):
-                postier, out_crieterion = self.calculate_postier()
-                self.summarize_quaternions()
-                self.summarize_rms()
-                self.summarize_states(real_state)
+            logging.debug(f"GPS Queue {self.gps_queue.tensor} with shape {self.gps_queue.tensor.shape}")
+            logging.debug(f"States {self.states.tensor} with shape {self.states.tensor.shape} is being pushed  with state {self.states.get()} with shape {self.states.get().shape}")
+            
+            logging.debug(f"States {self.states.tensor} with shape {self.states.tensor.shape}")
+            if(self.gps_recived and self.imu_recived):
+                if(self.horizon_size_reached()):
+                    postier, out_crieterion = self.calculate_postier()
+                    self.summarize_quaternions()
+                    self.summarize_rms()
+                    self.summarize_states(real_state)
+            self.states.push(self.states.get())
+        self.summarize_states()
         return postier, out_crieterion
 
     def get_error(self):
         logging.debug(f"Self States Shape {self.states.tensor.shape} and GPS Queue Shape {self.gps_queue.tensor.shape}")
         error = torch.sum(torch.norm(self.gps_queue.tensor - self.states.tensor[:, :, :3], dim=2), dim=0)
+        logging.debug(f"Error {error} with shape {error.shape}")
+        logging.debug(f"GPS Queue {self.gps_queue.tensor} with shape {self.gps_queue.tensor.shape}")
+        logging.debug(f"States {self.states.tensor} with shape {self.states.tensor.shape}")
         logging.debug(f"Error Shape {error.shape}")
         self.rms_errors = error
         return error
