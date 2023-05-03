@@ -242,7 +242,9 @@ class BaseCalibrator:
     def slerp_quaternions(self, quats, rms):
         probs = torch.softmax(rms, dim=0)
         resampled = torch.multinomial(torch.squeeze(probs), self.sample_size//20, replacement=False)
-        quats[resampled] = roma.random_unitquat(self.sample_size//20)
+        probs_2 = torch.softmax(-rms, dim=0)
+        good_quats = torch.multinomial(torch.squeeze(probs_2), self.sample_size//20, replacement=False)
+        quats[resampled] = roma.unitquat_slerp_fast(quats[resampled], quats[good_quats], torch.tensor([0.5]))
         return quats
 
     def calculate_postier(self):
@@ -261,7 +263,8 @@ class BaseCalibrator:
         positions = self.states.tensor[:, resampled, :]
         self.states.tensor = positions
         rms = self.rms_errors[resampled]
-        self.quaternions = quats#self.randomize_quaternions(quats, rms)
+        #self.quaternions = quats#self.randomize_quaternions(quats, rms)
+        self.quaternions = self.slerp_quaternions(quats, rms)
         self.rms_errors = torch.zeros_like(self.rms_errors)
         #logging.debug(f"ReSampled Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
         #logging.debug(f"ReSampled Means of positions {self.states.tensor.mean(dim=0)} with shape {self.states.tensor.shape}")
