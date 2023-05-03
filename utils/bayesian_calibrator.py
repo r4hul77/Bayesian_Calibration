@@ -224,7 +224,8 @@ class BaseCalibrator:
 
     def get_error(self):
         logging.debug(f"Self States Shape {self.states.tensor.shape} and GPS Queue Shape {self.gps_queue.tensor.shape}")
-        error = torch.sum(torch.norm(self.gps_queue.tensor - self.states.tensor[:, :, :3], dim=2), dim=0)
+        randomized_gps_queue = torch.rand(self.horizon_size, self.sample_size, 3)*self.pos_noise + self.gps_queue.tensor
+        error = torch.sum(torch.norm(randomized_gps_queue - self.states.tensor[:, :, :3], dim=2), dim=0)
         logging.debug(f"Error {error} with shape {error.shape}")
         logging.debug(f"GPS Queue {self.gps_queue.tensor} with shape {self.gps_queue.tensor.shape}")
         logging.debug(f"States {self.states.tensor} with shape {self.states.tensor.shape}")
