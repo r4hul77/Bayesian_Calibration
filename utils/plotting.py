@@ -4,6 +4,67 @@ import torch
 import signal
 import roma
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+import imageio
+
+
+def get_quat_axes(quaternion, scale=1):    
+    R = roma.unitquat_to_rotmat(quaternion.to("cpu"))
+    
+    # Define axes
+    axes = np.array([[1, 0, 0],
+                    [0, 1, 0],
+                    [0, 0, 1]])
+    
+    # Rotate axes by rotation matrix
+    rotated_axes = R @ axes.T
+    
+    x_axis = rotated_axes[:, 0]*scale
+    y_axis = rotated_axes[:, 1]*scale
+    z_axis = rotated_axes[:, 2]*scale
+    return x_axis, y_axis, z_axis
+
+
+def plot_axes_over_time(quaternions, real_quaternion, filename='axes.gif', fps=10):
+   
+    # Set up figure and axes
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim([-1, 1])
+    ax.set_ylim([-1, 1])
+    ax.set_zlim([-1, 1])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    x_axis_r, y_axis_r, z_axis_r = get_quat_axes(real_quaternion, scale=10)
+
+    # Iterate over quaternions and plot rotated axes
+    images = []
+    for q in quaternions:
+        ax.set_xlim([-1, 1])
+        ax.set_ylim([-1, 1])
+        ax.set_zlim([-1, 1])
+        x_axis, y_axis, z_axis = get_quat_axes(q, scale=10)
+        ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'y', label='X-R', alpha=0.5)
+        ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'brown', label='Y-R', alpha=0.5)
+        ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'purple', label='Z-R', alpha=0.5)
+        ax.plot([0, x_axis_r[0]], [0, x_axis_r[1]], [0, x_axis_r[2]], 'r', label='X-C', alpha=0.5)
+        ax.plot([0, y_axis_r[0]], [0, y_axis_r[1]], [0, y_axis_r[2]], 'g', label='Y-C', alpha=0.5)
+        ax.plot([0, z_axis_r[0]], [0, z_axis_r[1]], [0, z_axis_r[2]], 'b', label='Z-C', alpha=0.5)
+        ax.legend()
+        ax.set_title(f'Quaternion {q}')
+        # Save current plot as image for GIF
+        fig.canvas.draw()
+        image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
+        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        images.append(image)
+        # Clear axes for next plot
+        ax.cla()
+
+    # Save frames as GIF
+    imageio.mimsave(filename, images, fps=fps)
+
+
 
 def plot_torch_tensors(pos_x, pos_y, x_label='pos_x', y_label='pos_y', label="Data", scale=True):
     # Convert tensors to numpy arrays
@@ -60,6 +121,7 @@ def plot_acc_data(acc_data, sample_rate, og_data=None, og_sample_rate=None):
         ax[2].plot(time_og.to("cpu"), og_data[:, 2].to("cpu"), label='Original Data')
     ax[2].set_ylabel('Z Acceleration (m/s^2)')
     ax[2].set_xlabel('Time (s)')
+    ax[2].legend()
     plt.show()
 
 def plot_angular_velocity_data(ang_vel_data, sample_rate, og_data=None, og_sample_rate=None):
@@ -166,17 +228,9 @@ def plot_coordinate_axes(quaternion):
     # Normalize quaternion
     R = roma.unitquat_to_rotmat(quaternion.to("cpu"))
     
-    # Define axes
-    axes = np.array([[1, 0, 0],
-                     [0, 1, 0],
-                     [0, 0, 1]])
+    # Define axe
     
-    # Rotate axes by rotation matrix
-    rotated_axes = R @ axes.T
-    
-    x_axis = rotated_axes[:, 0]
-    y_axis = rotated_axes[:, 1]
-    z_axis = rotated_axes[:, 2]
+    x_axis, y_axis, z_axis = get_quat_axes(quaternion)
     
     # Plot axes
     fig = plt.figure()
@@ -195,32 +249,14 @@ def plot_coordinate_axes(quaternion):
     ax.set_zlabel('Z')
 
 def plot_axes(q_real, q_calc):
-    
-    def get_quat_axes(quaternion):    
-        R = roma.unitquat_to_rotmat(quaternion.to("cpu"))
-        
-        # Define axes
-        axes = np.array([[1, 0, 0],
-                        [0, 1, 0],
-                        [0, 0, 1]])
-        
-        # Rotate axes by rotation matrix
-        rotated_axes = R @ axes.T
-        
-        x_axis = rotated_axes[:, 0]
-        y_axis = rotated_axes[:, 1]
-        z_axis = rotated_axes[:, 2]
-        return x_axis, y_axis, z_axis    
+
     # Plot axes
     x_axis, y_axis, z_axis = get_quat_axes(q_real)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'r', label='X-R')
-    ax.text(x_axis[0], x_axis[1], x_axis[2], 'X-R')
-    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'g', label='Y-R')
-    ax.text(y_axis[0], y_axis[1], y_axis[2], 'Y-R')
-    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'b', label='Z-R')
-    ax.text(z_axis[0], z_axis[1], z_axis[2], 'Z-R')
+    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'y', label='X-R', alpha=0.5)
+    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'brown', label='Y-R', alpha=0.5)
+    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'purple', label='Z-R', alpha=0.5)
     ax.set_xlim([-1, 1])
     ax.set_ylim([-1, 1])
     ax.set_zlim([-1, 1])
@@ -228,12 +264,10 @@ def plot_axes(q_real, q_calc):
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     x_axis, y_axis, z_axis = get_quat_axes(q_calc)
-    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'r', label='X-C')
-    ax.text(x_axis[0], x_axis[1], x_axis[2], 'X-C')
-    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'g', label='Y-C')
-    ax.text(y_axis[0], y_axis[1], y_axis[2], 'Y-C')
-    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'b', label='Z-C')
-    ax.text(z_axis[0], z_axis[1], z_axis[2], 'Z-C')
+    ax.plot([0, x_axis[0]], [0, x_axis[1]], [0, x_axis[2]], 'r', label='X-C', alpha=0.5)
+    ax.plot([0, y_axis[0]], [0, y_axis[1]], [0, y_axis[2]], 'g', label='Y-C', alpha=0.5)
+    ax.plot([0, z_axis[0]], [0, z_axis[1]], [0, z_axis[2]], 'b', label='Z-C', alpha=0.5)
+    ax.legend()
     ax.set_xlim([-1, 1])
     ax.set_ylim([-1, 1])
     ax.set_zlim([-1, 1])
