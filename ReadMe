@@ -1,0 +1,1 @@
+This repo uses python 3.8. Install all the requirements in requirements.txt using "conda create --name <env> --file requirements.txt".
