@@ -40,7 +40,7 @@ def plot_axes_over_time(quaternions, real_quaternion, filename='axes.gif', fps=1
 
     # Iterate over quaternions and plot rotated axes
     images = []
-    for q in quaternions:
+    for i, q in enumerate(quaternions):
         ax.set_xlim([-1, 1])
         ax.set_ylim([-1, 1])
         ax.set_zlim([-1, 1])
@@ -52,7 +52,7 @@ def plot_axes_over_time(quaternions, real_quaternion, filename='axes.gif', fps=1
         ax.plot([0, y_axis_r[0]], [0, y_axis_r[1]], [0, y_axis_r[2]], 'g', label='Y-C', alpha=0.5)
         ax.plot([0, z_axis_r[0]], [0, z_axis_r[1]], [0, z_axis_r[2]], 'b', label='Z-C', alpha=0.5)
         ax.legend()
-        ax.set_title(f'Quaternion {q}')
+        ax.set_title(f'Quaternion {q} : iter {i}')
         # Save current plot as image for GIF
         fig.canvas.draw()
         image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')

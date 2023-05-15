@@ -84,7 +84,7 @@ class BaseCalibrator:
             assert self.quaternions.shape == (self.sample_size, 4), f"Quaternions must be of shape ({sample_size}, 4) but recived {self.quaternions.shape}" 
         else:
             self.quaternions = generate_random_quaternions(self.sample_size)
-        self.rms_errors = torch.empty(self.sample_size, self.horizon_size, dtype=torch.float32)
+        self.rms_errors = torch.empty(self.sample_size, dtype=torch.float32)
         self.grav_vec = torch.tensor([[0, 0, 9.81]])
         self.imu_dt = imu_dt
         self.gps_dt = gps_dt
@@ -261,6 +261,9 @@ class BaseCalibrator:
         probs = torch.softmax(rms, dim=0)
         resampled = torch.multinomial(torch.squeeze(probs), self.sample_size//20, replacement=False)
         quats[resampled] = roma.random_unitquat(self.sample_size//20)
+        logging.debug(f"Before Recalculating data is {self.states.tensor[:, resampled, :]}")
+        self.states.tensor[:, resampled, :] = self.recalculate_states(quats[resampled])
+        logging.debug(f"States {self.states.tensor} with shape {self.states.tensor.shape}")
         return quats
 
     def slerp_quaternions(self, quats, rms):
@@ -345,8 +348,9 @@ class BaseCalibrator:
         positions = self.states.tensor[:, resampled, :]
         self.states.tensor = positions
         rms = self.rms_errors[resampled]
-        #self.quaternions = quats#self.randomize_quaternions(quats, rms)
-        self.quaternions = self.slerp_quaternions(quats, rms)
+        self.quaternions = quats
+        #self.randomize_quaternions(quats, rms)
+        #self.quaternions = self.slerp_quaternions(quats, rms)
         self.rms_errors = torch.zeros_like(self.rms_errors)
         logging.debug(f"ReSampled Means of quaternion {self.quaternions.mean(dim=0)} with shape {self.quaternions.shape}")
         logging.debug(f"ReSampled Means of positions {self.states.tensor.mean(dim=0)} with shape {self.states.tensor.shape}")
